@@ -1,0 +1,4 @@
+requests
+pyTelegramBotAPI
+psycopg2-binary
+colorama
