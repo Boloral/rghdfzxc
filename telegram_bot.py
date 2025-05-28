@@ -1,5 +1,6 @@
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+import requests
 import tempfile
 import os
 
