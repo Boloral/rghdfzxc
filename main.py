@@ -67,7 +67,7 @@ def get_stats():
 def start_search():
     while True:
         rand = generate_random_string()
-        url = f"https://gachi.gay/F33P1p"
+        url = f"https://gachi.gay/{rand}"
         found, content_type = check_media_url(url)
         if found:
             if is_link_found(url):
