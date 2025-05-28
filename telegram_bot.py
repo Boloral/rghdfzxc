@@ -4,6 +4,9 @@ import requests
 import tempfile
 import os
 from PIL import Image
+import imagehash
+from collections import defaultdict
+
 TELEGRAM_TOKEN = "7911469039:AAFbpPSKTvgGT9cdzyB-wkwNsmFToxT5-Lw"
 CHAT_ID = "1075736931"
 
@@ -11,6 +14,25 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 stats_fetcher = None
 
+image_hashes = defaultdict(lambda: None)
+HASH_THRESHOLD = 3
+
+def get_image_hash(image_path):
+    try:
+        with Image.open(image_path) as img:
+            return imagehash.phash(img)
+    except Exception as e:
+        print(f"Помилка при обчисленні хеша: {e}")
+        return None
+
+def is_similar_to_sent_images(new_hash):
+    if new_hash is None:
+        return False
+        
+    for sent_hash in image_hashes.values():
+        if sent_hash is not None and (new_hash - sent_hash) < HASH_THRESHOLD:
+            return True
+    return False
 
 def send_telegram_preview(url, content_type):
     try:
@@ -25,8 +47,36 @@ def send_telegram_preview(url, content_type):
                 temp_file.write(chunk)
             temp_file_path = temp_file.name
 
+        should_send = True
+        closest_diff = float('inf')  # Для збереження мінімальної різниці
+        
         if content_type.startswith("image/"):
-            # Відкриваємо та перевіряємо розмір зображення
+            current_hash = get_image_hash(temp_file_path)
+            if current_hash is not None:
+                # Шукаємо найближчий існуючий хеш
+                for sent_url, sent_hash in image_hashes.items():
+                    if sent_hash is not None:
+                        diff = current_hash - sent_hash
+                        if diff < closest_diff:
+                            closest_diff = diff
+                            closest_url = sent_url
+                
+                # Перевіряємо на схожість
+                if closest_diff < HASH_THRESHOLD:
+                    print(f"⏩ Пропускаємо схоже зображення: {url}")
+                    bot.send_message(
+                        CHAT_ID,
+                        f"🚫 Пропущено схоже зображення:\n"
+                        f"Нове: {url}\n"
+                        f"Схоже на: {closest_url}\n"
+                        f"Рівень схожості: {closest_diff}/{HASH_THRESHOLD}",
+                        disable_web_page_preview=True
+                    )
+                    should_send = False
+                else:
+                    image_hashes[url] = current_hash
+
+            # Ресайз зображення якщо потрібно
             with Image.open(temp_file_path) as img:
                 max_size = 1280
                 width, height = img.size
@@ -34,24 +84,24 @@ def send_telegram_preview(url, content_type):
                     scale = max_size / max(width, height)
                     new_size = (int(width * scale), int(height * scale))
                     img = img.resize(new_size, Image.Resampling.LANCZOS)
-                    # Зберігаємо назад у тимчасовий файл, перезаписуємо
                     img.save(temp_file_path, format="JPEG")
 
-            with open(temp_file_path, 'rb') as photo:
-                bot.send_photo(CHAT_ID, photo, caption=f"📸 Знайдено зображення:\n{url}")
+        if should_send:
+            if content_type.startswith("image/"):
+                with open(temp_file_path, 'rb') as photo:
+                    bot.send_photo(CHAT_ID, photo, caption=f"📸 Знайдено зображення:\n{url}")
+            elif content_type.startswith("video/"):
+                with open(temp_file_path, 'rb') as video:
+                    bot.send_video(CHAT_ID, video, caption=f"🎥 Знайдено відео:\n{url}")
+            else:
+                bot.send_message(CHAT_ID, f"Знайдено медіа:\n{url}")
 
-        elif content_type.startswith("video/"):
-            with open(temp_file_path, 'rb') as video:
-                bot.send_video(CHAT_ID, video, caption=f"🎥 Знайдено відео:\n{url}")
-        else:
-            bot.send_message(CHAT_ID, f"Знайдено медіа:\n{url}")
-
-        # Видалення тимчасового файлу
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
     except Exception as e:
         print(f"❌ Помилка: {e}")
+        bot.send_message(CHAT_ID, f"❌ Помилка при обробці {url}: {str(e)}")
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
