@@ -3,13 +3,14 @@ from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 import requests
 import tempfile
 import os
-
+from PIL import Image
 TELEGRAM_TOKEN = "7911469039:AAFbpPSKTvgGT9cdzyB-wkwNsmFToxT5-Lw"
 CHAT_ID = "1075736931"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 stats_fetcher = None
+
 
 def send_telegram_preview(url, content_type):
     try:
@@ -25,20 +26,32 @@ def send_telegram_preview(url, content_type):
             temp_file_path = temp_file.name
 
         if content_type.startswith("image/"):
+            # Відкриваємо та перевіряємо розмір зображення
+            with Image.open(temp_file_path) as img:
+                max_size = 1280
+                width, height = img.size
+                if width > max_size or height > max_size:
+                    scale = max_size / max(width, height)
+                    new_size = (int(width * scale), int(height * scale))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+                    # Зберігаємо назад у тимчасовий файл, перезаписуємо
+                    img.save(temp_file_path, format="JPEG")
+
             with open(temp_file_path, 'rb') as photo:
                 bot.send_photo(CHAT_ID, photo, caption=f"📸 Знайдено зображення:\n{url}")
+
         elif content_type.startswith("video/"):
             with open(temp_file_path, 'rb') as video:
                 bot.send_video(CHAT_ID, video, caption=f"🎥 Знайдено відео:\n{url}")
         else:
             bot.send_message(CHAT_ID, f"Знайдено медіа:\n{url}")
 
-    except Exception as e:
-        print(f"Помилка надсилання прев’ю: {e}")
-    finally:
-        # Безпечно видаляємо тимчасовий файл, якщо був створений
-        if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
+        # Видалення тимчасового файлу
+        if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
+
+    except Exception as e:
+        print(f"❌ Помилка: {e}")
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
