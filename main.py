@@ -9,7 +9,7 @@ from colorama import init, Fore
 
 init(autoreset=True)
 
-DB_URL = "postgresql://postgres:lXAsHodiOczWkRVNUrJCRVsyXHKnATgL@postgres.railway.internal:5432/railway"
+DB_URL = "postgresql://postgres:lXAsHodiOczWkRVNUrJCRVsyXHKnATgL@trolley.proxy.rlwy.net:14294/railway"
 
 conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
