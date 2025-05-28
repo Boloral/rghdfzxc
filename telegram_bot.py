@@ -40,29 +40,45 @@ def send_telegram_preview(url, content_type):
         if response.status_code != 200:
             raise Exception("Не вдалося завантажити файл")
 
-        # Визначаємо розширення файлу з Content-Type або URL
-        file_extension = None
-        if content_type.startswith("image/"):
-            file_extension = ".png" if "png" in content_type.lower() else ".jpg"
-        elif content_type.startswith("video/"):
-            file_extension = ".mp4"
+        # Визначаємо розширення файлу
+        file_extension = ".png" if "png" in content_type.lower() else ".jpg" if content_type.startswith("image/") else ".mp4"
 
-        # Створюємо тимчасовий файл з правильним розширенням
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
             for chunk in response.iter_content(chunk_size=1024):
                 temp_file.write(chunk)
             temp_file_path = temp_file.name
 
         should_send = True
+        closest_diff = float('inf')
+        closest_url = None
         
         if content_type.startswith("image/"):
             current_hash = get_image_hash(temp_file_path)
-            if current_hash is not None and is_similar_to_sent_images(current_hash):
-                print(f"⏩ Пропускаємо схоже зображення: {url}")
-                should_send = False
-            else:
-                image_hashes[url] = current_hash
+            if current_hash is not None:
+                # Шукаємо найближчий існуючий хеш
+                for sent_url, sent_hash in image_hashes.items():
+                    if sent_hash is not None:
+                        diff = current_hash - sent_hash
+                        if diff < closest_diff:
+                            closest_diff = diff
+                            closest_url = sent_url
+                
+                # Перевіряємо на схожість
+                if closest_diff < HASH_THRESHOLD:
+                    print(f"⏩ Пропускаємо схоже зображення: {url}")
+                    bot.send_message(
+                        CHAT_ID,
+                        f"🚫 Пропущено схоже зображення:\n"
+                        f"Нове: {url}\n"
+                        f"Схоже на: {closest_url}\n"
+                        f"Рівень схожості: {closest_diff}/{HASH_THRESHOLD}",
+                        disable_web_page_preview=True
+                    )
+                    should_send = False
+                else:
+                    image_hashes[url] = current_hash
 
+            # Обробка зображення (ресайз + конвертація)
             with Image.open(temp_file_path) as img:
                 max_size = 1280
                 if img.width > max_size or img.height > max_size:
@@ -70,20 +86,17 @@ def send_telegram_preview(url, content_type):
                     new_size = (int(img.width * scale), int(img.height * scale))
                     img = img.resize(new_size, Image.Resampling.LANCZOS)
                     
-                    # Визначаємо формат для збереження
+                    # Вибір формату збереження
                     save_format = "PNG" if img.mode == 'RGBA' else "JPEG"
                     img.save(temp_file_path, format=save_format)
 
         if should_send:
             if content_type.startswith("image/"):
                 with open(temp_file_path, 'rb') as photo:
-                    # Відправляємо як фото (Telegram сам оптимізує)
                     bot.send_photo(CHAT_ID, photo, caption=f"📸 Знайдено зображення:\n{url}")
             elif content_type.startswith("video/"):
                 with open(temp_file_path, 'rb') as video:
                     bot.send_video(CHAT_ID, video, caption=f"🎥 Знайдено відео:\n{url}")
-            else:
-                bot.send_message(CHAT_ID, f"Знайдено медіа:\n{url}")
 
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
