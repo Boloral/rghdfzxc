@@ -14,9 +14,6 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 stats_fetcher = None
 _increment_stat_func = None
 
-# --- URL-адреси для еталонних зображень ---
-# ЗАМІНІТЬ ЦІ URL-АДРЕСИ НА РЕАЛЬНІ ПОСИЛАННЯ НА ВАШІ ЕТАЛОННІ ЗОБРАЖЕННЯ (3 ШТ.)
-# Переконайтесь, що посилання прямі та доступні для завантаження ботом.
 TEMPLATE_IMAGE_URLS_WITH_NAMES = {
     "Map": "https://gachi.gay/StZqB",
     "Road": "https://gachi.gay/4kO7c",
@@ -40,12 +37,9 @@ def get_image_hash(image_path):
 
 
 def _initialize_template_hashes():
-    """Завантажує еталонні зображення за URL, обчислює їх хеші та зберігає."""
-    print("⏳ Початок ініціалізації еталонних хешів...")
     for name, url in TEMPLATE_IMAGE_URLS_WITH_NAMES.items():
         temp_file_path = None
         try:
-            print(f"  Завантаження еталону '{name}' з {url}...")
             response = requests.get(url, stream=True, timeout=20)  # Збільшено таймаут
             response.raise_for_status()  # Перевірка на HTTP помилки (4xx, 5xx)
 
@@ -59,8 +53,6 @@ def _initialize_template_hashes():
             elif 'webp' in content_type:
                 suffix = '.webp'
             else:
-                print(
-                    f"  Увага: Не вдалося визначити тип файлу для '{name}' з Content-Type: {content_type}. Використовується .tmp")
                 suffix = '.tmp'
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
@@ -68,15 +60,12 @@ def _initialize_template_hashes():
                     temp_file.write(chunk)
                 temp_file_path = temp_file.name
 
-            print(f"  Обчислення хеша для еталону '{name}' (файл: {temp_file_path})...")
             img_hash = get_image_hash(temp_file_path)
 
             if img_hash:
                 PREDEFINED_IMAGE_HASHES[name] = img_hash
-                print(f"  ✅ Еталон '{name}' успішно завантажено та хешовано: {img_hash}")
             else:
-                print(
-                    f"  ⚠️ Не вдалося обчислити хеш для еталону '{name}' з {url}. Можливо, файл не є зображенням або пошкоджений.")
+                pass
 
         except requests.exceptions.Timeout:
             print(f"  ❌ Таймаут при завантаженні еталону '{name}' з {url}.")
@@ -88,23 +77,12 @@ def _initialize_template_hashes():
             if temp_file_path and os.path.exists(temp_file_path):
                 try:
                     os.remove(temp_file_path)
-                    print(f"  🗑️ Тимчасовий файл {temp_file_path} для '{name}' видалено.")
                 except Exception as e:
                     print(f"  Помилка видалення тимчасового файлу {temp_file_path}: {e}")
 
-    # Підсумкове повідомлення після ініціалізації
-    if not PREDEFINED_IMAGE_HASHES:
-        print(
-            "‼️ ПОПЕРЕДЖЕННЯ: Не вдалося завантажити ЖОДНОГО еталонного хеша. Перевірка схожості з еталонами не працюватиме.")
-    elif len(PREDEFINED_IMAGE_HASHES) < len(TEMPLATE_IMAGE_URLS_WITH_NAMES):
-        print(
-            f"⚠️ УВАГА: Завантажено лише {len(PREDEFINED_IMAGE_HASHES)} з {len(TEMPLATE_IMAGE_URLS_WITH_NAMES)} очікуваних еталонних хешів. Перевірка на схожість буде обмеженою.")
-    else:
-        print(f"✅ Успішно завантажено та хешовано {len(PREDEFINED_IMAGE_HASHES)} еталонних зображень.")
     print("🏁 Ініціалізація еталонних хешів завершена.")
 
 
-# Викликаємо функцію ініціалізації один раз при завантаженні модуля (тобто при старті бота)
 _initialize_template_hashes()
 
 
@@ -179,8 +157,6 @@ def send_telegram_preview(url, content_type):
 
     except Exception as e:
         print(f"❌ Помилка в send_telegram_preview для {url}: {e}")
-        # Надсилати повідомлення про помилку в чат тут може бути надто часто, якщо URL часто недоступні
-        # bot.send_message(CHAT_ID, f"❌ Помилка при обробці {url}: {str(e)}")
 
 
 @bot.message_handler(commands=['start'])
@@ -199,9 +175,10 @@ def handle_stats(message):
     stats = stats_fetcher() if stats_fetcher else {"found_new": 0, "found_repeat": 0, "found_similar": 0}
     response = (
         "📈 *Статистика пошуку:*\n"
-        f"🔹 Унікальних знайдено: *{stats.get('found_new', 0)}*\n"
-        f"🔁 Повторів: *{stats.get('found_repeat', 0)}*\n"
-        f"👯 Схожих (на еталони) пропущено: *{stats.get('found_similar', 0)}*"
+        f"- ✨ Взагалом знайдено: *{stats.get('found_new', 0)}*\n"
+        f"- 🔹 Унікальних знайдено: *{stats.get('found_new', 0) - stats.get('found_similar', 0)}*\n"
+        f"- 👯 Схожих пропущено: *{stats.get('found_similar', 0)}*\n"
+        f"- 🔁 Повторів: *{stats.get('found_repeat', 0)}*"
     )
     bot.send_message(message.chat.id, response, parse_mode="Markdown")
 
@@ -211,5 +188,5 @@ def run_bot(fetch_stats_func, increment_stat_func):
     stats_fetcher = fetch_stats_func
     _increment_stat_func = increment_stat_func
     # Повідомлення про статус завантаження хешів тепер друкуються в _initialize_template_hashes()
-    print("✅ Telegram бот запущено (після ініціалізації еталонів).")
+    print("✅ Telegram бот запущено.")
     bot.infinity_polling()
