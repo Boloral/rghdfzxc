@@ -9,7 +9,7 @@ from colorama import init, Fore
 
 init(autoreset=True)
 
-DB_URL = "postgresql://postgres:lXAsHodiOczWkRVNUrJCRVsyXHKnATgL@trolley.proxy.rlwy.net:14294/railway"
+DB_URL = "postgresql://postgres:lXAsHodiOczWkRVNUrJCRVsyXHKnATgL@trolley.proxy.rlwy.net:14294/railway" # Ваша URL DB
 
 conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
@@ -27,7 +27,8 @@ def init_db():
             value INTEGER NOT NULL
         );
     """)
-    for key in ["found_new", "found_repeat"]:
+    # Додано 'found_similar'
+    for key in ["found_new", "found_repeat", "found_similar"]:
         cursor.execute("INSERT INTO stats (key, value) VALUES (%s, 0) ON CONFLICT (key) DO NOTHING;", (key,))
     conn.commit()
 
@@ -67,7 +68,7 @@ def get_stats():
 def start_search():
     while True:
         rand = generate_random_string()
-        url = f"https://gachi.gay/{rand}"
+        url = f"https://gachi.gay/{rand}" # Обережно з використанням таких доменів
         found, content_type = check_media_url(url)
         if found:
             if is_link_found(url):
@@ -77,15 +78,17 @@ def start_search():
                 print(Fore.GREEN + f"Знайдено. Посилання: {url}")
                 save_link(url)
                 increment_stat("found_new")
+                # Функція send_telegram_preview тепер сама може інкрементувати 'found_similar'
                 telegram_bot.send_telegram_preview(url, content_type)
         else:
             print(Fore.RED + f"Нічого не знайдено за {url}")
-        time.sleep(1)
+        time.sleep(1) # Можливо, варто збільшити для зменшення навантаження
 
 def main():
     init_db()
     threading.Thread(target=start_search, daemon=True).start()
-    telegram_bot.run_bot(get_stats)
+    # Передаємо get_stats та increment_stat до run_bot
+    telegram_bot.run_bot(get_stats, increment_stat)
 
 if __name__ == "__main__":
     main()
